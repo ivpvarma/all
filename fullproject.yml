@@ -1,0 +1,89 @@
+- hosts: test-server
+   become: yes
+
+   tasks:
+           - name: installing nginx
+             apt: name=nginx state=present
+
+           - name: doenloading tomcat file
+             get_url: url=http://apachemirror.wuchna.com/tomcat/tomcat-8/v8.5.43/bin/apache-tomcat-8.5.43.tar.gz dest=/root/tomcat
+
+           - name: extracting file
+             command: tar -xzvf /root/tomcat/apache-tomcat-8.5.43.tar.gz
+
+           - name: copying war file
+             copy: src=/home/akshay/VProfile/target/vprofile-v1.war dest=/root/apache-tomcat-8.5.43/webapps
+
+           - name: removing default from sites-available
+             command: rm -rf /etc/nginx/sites-available/default
+
+           - name: removing default from sites-enabled
+             command: rm -rf /etc/nginx/sites-enabled/default
+
+           - name: copying to sites-available
+             copy: src=/home/akshay/vproapp dest=/etc/nginx/sites-available/vproapp
+
+           - name: copying to site-emabled
+             copy: src=/home/akshay/vproapp dest=/etc/nginx/sites-enabled/vproapp
+
+           - name: starting nginx
+             service: name=nginx state=started enabled=yes
+
+           - name: updating packages
+             command: apt update
+
+           - name: installing jdk
+             apt: name=openjdk-8-jdk state=present
+
+           - debug: msg="running tomcat via ansible"
+           - name: starting tomcat
+             shell: /root/apache-tomcat-8.5.43/bin/startup.sh
+             args:
+                     chdir: "/tmp"
+
+           - name: start tomcat
+             command: "nohup /root/apache-tomcat-8.5.43/bin/startup.sh"
+             tags: start
+
+           - name: stopping tomcat
+             command: "nohup /root/apache-tomcat-8.5.43/bin/shutdown.sh"
+             tags: stop
+            
+           - name: creating mysql database
+             apt: name={{ item }} state=latest
+             with_items:
+                    - python-mysqldb
+                    - mysql-server
+
+           - name: creating accouts database
+             mysql_db: name=accounts state=present
+
+           - name: creating user
+             mysql_user: name=root password=vprodbpass
+
+           - name: copying applications properties
+             copy: src=/home/akshay/application.properties dest=/root/apache-tomcat-8.5.43/webapps/vprofile-v1/WEB-INF/classes/application.properties
+
+           - name: copying dumb file
+             copy: src=/home/akshay/accountsdb.sql dest=/tmp/accountsdb.sql
+             tags:
+                    - deploy
+           - name: restoring database
+             mysql_db:
+                      name: accounts
+                      login_user: root
+                      login_password: vprodbpass
+                      state: import
+                      target: /tmp/accountsdb.sql          
+               
+             tags: 
+                    - deploy
+
+             notify:
+                    - restart mysql
+   handlers:
+           - name: restart mysql
+             service:
+                     name: mysql
+                     state: restarted 
+...
